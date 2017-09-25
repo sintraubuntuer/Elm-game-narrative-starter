@@ -49,5 +49,5 @@ Some of the questions were converted to a multioption answer type
 
 
 Enjoy playing the  guided tour/questionnaire ( proof of concept ) example at
-[Guided Tour through Vila Sassetti - Sintra](https://sintraubuntuer.github.io/pages/guided-tour-through-vila-sassetti-sintra.html){:target="_blank"}
+[Guided Tour through Vila Sassetti - Sintra](https://sintraubuntuer.github.io/pages/guided-tour-through-vila-sassetti-sintra.html)
 and enjoy creating your interactive story!

@@ -1,0 +1,9 @@
+elm-stuff/
+node_modules/
+tmp/
+img/
+dist/
+sound/
+img/
+compiledjs/
+outputjs/

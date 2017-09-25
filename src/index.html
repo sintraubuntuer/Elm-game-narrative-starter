@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charSet="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1 , shrink-to-fit=yes" />
+
+     <link rel="stylesheet" type="text/css" href="Theme/styles/main.css" />
+     <link rel="stylesheet" type="text/css" href="Theme/styles/reset.css" />
+     <link rel="stylesheet" type="text/css" href="Theme/styles/story.css" />
+      <link rel="stylesheet" type="text/css" href="Theme/styles/github-markdown.css" />
+
+    <title>A Guided Tour through ... - An Interactive Story</title>
+  </head>
+  <body>
+    <div id="outputArea">
+    </div>
+
+  </body>
+
+  <script type="text/javascript" src="compiledjs/questionAndAnswer.js"></script>
+  <script type="text/javascript">
+     var node1 = document.getElementById("outputArea") ;
+     var elmApp = Elm.Main.embed( node1 , {   baseImgUrl : ""
+                                            , baseSoundUrl : "sound/"  }  );
+
+
+     elmApp.ports.saveHistoryToStorage.subscribe(function(history) {
+        localStorage.setItem('historyStr', JSON.stringify(history));
+    });
+
+    elmApp.ports.sendRequestForStoredHistory.subscribe(function(data) {
+       var storedState = localStorage.getItem('historyStr');
+       var storedHistory = storedState ? JSON.parse(storedState) : ( { "playerName" : "" ,  "lInteractions" : new Array() } ) ;
+       elmApp.ports.getHistoryFromStorage.send(storedHistory)
+   });
+
+  </script>
+
+
+
+</html>

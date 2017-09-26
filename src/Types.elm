@@ -248,7 +248,7 @@ type ChangeWorldCommand
 
 
 type QuasiChangeWorldCommand
-    = Check_IfAnswerCorrectUsingBackend String CheckAnswerData ID
+    = Check_IfAnswerCorrectUsingBackend String CheckBkendAnswerData ID
     | Check_IfAnswerCorrect (List String) CheckAnswerData ID
     | CheckAndAct_IfChosenOptionIs CheckOptionData ID
     | Write_GpsInfoToItem ID
@@ -267,6 +267,16 @@ type alias CheckAnswerData =
     { mbMaxNrTries : Maybe Int
     , answerCase : AnswerCase
     , answerSpaces : AnswerSpaces
+    , correctIncorrectFeedback : Bool
+    , correctAnsTextDict : Dict String String
+    , incorrectAnsTextDict : Dict String String
+    , lnewAttrs : List ( String, AttrTypes )
+    , lotherInterAttrs : List ( String, String, AttrTypes )
+    }
+
+
+type alias CheckBkendAnswerData =
+    { mbMaxNrTries : Maybe Int
     , correctIncorrectFeedback : Bool
     , correctAnsTextDict : Dict String String
     , incorrectAnsTextDict : Dict String String

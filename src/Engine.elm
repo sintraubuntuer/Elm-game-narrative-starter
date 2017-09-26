@@ -15,6 +15,7 @@ module Engine
         , getInteractableAttribute
         , check_IfAnswerCorrect
         , simpleCheck_IfAnswerCorrect
+        , simpleCheck_IfAnswerCorrectUsingBackend
         , checkAndAct_IfChosenOptionIs
         , check_IfAnswerCorrectUsingBackend
         , processChosenOptionEqualTo
@@ -95,6 +96,7 @@ module Engine
         , moveTo
         , removeLocation
         , checkAnswerData
+        , checkBkendAnswerData
         , checkOptionData
         , addChoiceLanguage
         , astring
@@ -479,41 +481,53 @@ replaceQuasiCwCmdsWithCwcommands extraInfo quasiCwCommand =
             replaceWriteGpsInfoToItem extraInfo.geolocationInfoText interactableId
 
 
-replaceCheckIfAnswerCorrectUsingBackend : BackendAnswerStatus -> String -> CheckAnswerData -> String -> ChangeWorldCommand
+replaceCheckIfAnswerCorrectUsingBackend : BackendAnswerStatus -> String -> CheckBkendAnswerData -> String -> ChangeWorldCommand
 replaceCheckIfAnswerCorrectUsingBackend bkendAnsStatus strUrl cAnswerData interactableId =
     case bkendAnsStatus of
+        -- no change yet . . Needs to request info from backend
         NoInfoYet ->
             NoChange
 
-        -- no change yet . . Needs to request info from backend
+        -- info has already been requested ,  we dont want to request it again
         WaitingForInfoRequested ->
             NoChange
 
-        -- info has already been requested ,  we dont want to request it again
         Ans answerinfo ->
-            if (answerinfo.maxTriesReached) then
-                WriteTextToItem
-                    ("  \n"
-                        ++ " "
-                        ++ "___MAX_TRIES_ON_BACKEND___"
-                        ++ " ,  "
-                        ++ "  \n , "
-                        ++ "___your_answer___"
-                        ++ " "
-                        ++ (answerinfo.playerAnswer)
+            let
+                checkAnswerData =
+                    (CheckAnswerData
+                        cAnswerData.mbMaxNrTries
+                        CaseInsensitiveAnswer
+                        AnswerSpacesDontMatter
+                        cAnswerData.correctIncorrectFeedback
+                        cAnswerData.correctAnsTextDict
+                        cAnswerData.incorrectAnsTextDict
+                        cAnswerData.lnewAttrs
+                        cAnswerData.lotherInterAttrs
                     )
-                    interactableId
-            else if (answerinfo.answered && answerinfo.correctAnswer) then
-                let
-                    newCheckAnswerData =
-                        { cAnswerData | lnewAttrs = cAnswerData.lnewAttrs ++ [ ( "bonusText", Astring answerinfo.additionalText ) ] }
-                in
+
+                newCheckAnswerData =
+                    { checkAnswerData | lnewAttrs = cAnswerData.lnewAttrs ++ [ ( "bonusText", Astring answerinfo.additionalText ) ] }
+            in
+                if (answerinfo.maxTriesReached) then
+                    WriteTextToItem
+                        ("  \n"
+                            ++ " "
+                            ++ "___MAX_TRIES_ON_BACKEND___"
+                            ++ " ,  "
+                            ++ "  \n , "
+                            ++ "___YOUR_ANSWER___"
+                            ++ " "
+                            ++ (answerinfo.playerAnswer)
+                        )
+                        interactableId
+                else if (answerinfo.answered && answerinfo.correctAnswer) then
                     CheckIfAnswerCorrect ([ answerinfo.playerAnswer ]) (answerinfo.playerAnswer) newCheckAnswerData interactableId
-            else if (answerinfo.answered && answerinfo.incorrectAnswer) then
-                CheckIfAnswerCorrect ([ answerinfo.playerAnswer ++ "something" ]) answerinfo.playerAnswer cAnswerData interactableId
-            else
-                -- ( not answerinfo.answered )
-                NoChange
+                else if (answerinfo.answered && answerinfo.incorrectAnswer) then
+                    CheckIfAnswerCorrect ([ answerinfo.playerAnswer ++ "something" ]) answerinfo.playerAnswer checkAnswerData interactableId
+                else
+                    -- ( not answerinfo.answered )
+                    NoChange
 
         CommunicationFailure ->
             WriteTextToItem
@@ -972,9 +986,14 @@ simpleCheck_IfAnswerCorrect lcorrectAnswers mbNrTries interactableId =
     Check_IfAnswerCorrect lcorrectAnswers (CheckAnswerData mbNrTries CaseInsensitiveAnswer AnswerSpacesDontMatter True Dict.empty Dict.empty [] []) interactableId
 
 
-check_IfAnswerCorrectUsingBackend : String -> CheckAnswerData -> String -> QuasiChangeWorldCommand
+check_IfAnswerCorrectUsingBackend : String -> CheckBkendAnswerData -> String -> QuasiChangeWorldCommand
 check_IfAnswerCorrectUsingBackend =
     Check_IfAnswerCorrectUsingBackend
+
+
+simpleCheck_IfAnswerCorrectUsingBackend : String -> Maybe Int -> String -> QuasiChangeWorldCommand
+simpleCheck_IfAnswerCorrectUsingBackend strUrl mbNrTries interactableId =
+    Check_IfAnswerCorrectUsingBackend strUrl (CheckBkendAnswerData mbNrTries True Dict.empty Dict.empty [] []) interactableId
 
 
 checkAndAct_IfChosenOptionIs : CheckOptionData -> String -> QuasiChangeWorldCommand
@@ -1111,6 +1130,11 @@ addChoiceLanguage =
 checkAnswerData : Maybe Int -> AnswerCase -> AnswerSpaces -> Bool -> Dict String String -> Dict String String -> List ( String, AttrTypes ) -> List ( String, String, AttrTypes ) -> CheckAnswerData
 checkAnswerData =
     CheckAnswerData
+
+
+checkBkendAnswerData : Maybe Int -> Bool -> Dict String String -> Dict String String -> List ( String, AttrTypes ) -> List ( String, String, AttrTypes ) -> CheckBkendAnswerData
+checkBkendAnswerData =
+    CheckBkendAnswerData
 
 
 checkOptionData : String -> Dict String String -> List ( String, AttrTypes ) -> List ( String, String, AttrTypes ) -> CheckOptionData

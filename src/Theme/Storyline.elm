@@ -75,11 +75,23 @@ view storyLine lgId showTextBoxInStoryline mbanswerboxtext answerOptionsDict end
                                 text ""
                     else
                         text ""
+
+                options : Markdown.Options
+                options =
+                    let
+                        dOptions =
+                            Markdown.defaultOptions
+                    in
+                        { dOptions | sanitize = True }
+
+                markdownToSanitizedHtml : List (Attribute msg) -> String -> Html msg
+                markdownToSanitizedHtml lattrs userInput =
+                    Markdown.toHtmlWith options lattrs userInput
             in
                 ( key
                 , li [ classList classes ] <|
                     [ h4 [ class "Storyline__Item__Action" ] <| [ text interactableName ]
-                    , Markdown.toHtml [ class "Storyline__Item__Narrative markdown-body" ] narrative
+                    , markdownToSanitizedHtml [ class "Storyline__Item__Narrative markdown-body" ] narrative
                     , viewMbAnswerBox
                     , viewMbAnswerButtons
                     , viewMbMoreLink

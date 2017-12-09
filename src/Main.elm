@@ -2,9 +2,9 @@ port module Main exposing (..)
 
 import Engine exposing (..)
 import Types as EngineTypes exposing (BackendAnswerStatus(..), AnswerInfo, InteractionExtraInfo, MoreInfoNeeded(..))
-import OurStory3.Manifest as Manifest
-import OurStory3.Rules as Rules
-import OurStory3.Narrative as Narrative
+import OurStory2.Manifest as Manifest
+import OurStory2.Rules as Rules
+import OurStory2.Narrative as Narrative
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Tuple

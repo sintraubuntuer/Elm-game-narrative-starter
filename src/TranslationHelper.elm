@@ -70,8 +70,14 @@ getInLanguage lgId theStr =
                 , ( ( "___EXIT___", "pt" ), "Exit" )
                 , ( ( "___EXIT___", "en" ), "Exit" )
                 ]
+
+        lgId_ =
+            if lgId == "vi" || lgId == "vw" then
+                "en"
+            else
+                lgId
     in
-        case (Dict.get ( theStr, lgId ) translationDict) of
+        case (Dict.get ( theStr, lgId_ ) translationDict) of
             Nothing ->
                 theStr
 

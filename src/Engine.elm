@@ -26,6 +26,7 @@ module Engine
         , createAmultiChoice
         , removeMultiChoiceOptions
         , setAttributeValue
+        , removeAttributeIfExists
         , increaseCounter
         , getLocations
         , getEndingText
@@ -77,6 +78,8 @@ module Engine
         , noChosenOptionYet
         , choiceHasAlreadyBeenMade
         , ChangeWorldCommand
+        , QuasiChangeWorldCommand
+        , QuasiChangeWorldCommandWithBackendInfo
         , addLocation
         , endStory
         , loadScene
@@ -111,6 +114,10 @@ module Engine
         , caseInsensitiveAnswer
         , answerSpacesMatter
         , answerSpacesDontMatter
+        , headerAnswerAndCorrectIncorrect
+        , noFeedback
+        , noQuasiChange
+        , noQuasiChangeWithBackend
         )
 
 {-| The story engine handles storing and advancing the state of the "world model" by running through your story rules on each interaction and updating the world model appropriately. It is designed to be embedded in your own Elm app, allowing for maximum flexibility and customization.
@@ -378,7 +385,7 @@ update :
     String
     -> Types.InteractionExtraInfo
     -> Model
-    -> ( Model, Maybe String, List String, Maybe String )
+    -> ( Model, Maybe String, List String, Types.MoreInfoNeeded )
 update interactableId extraInfo ((Model story) as model) =
     let
         defaultChanges : List ChangeWorldCommand
@@ -413,10 +420,24 @@ update interactableId extraInfo ((Model story) as model) =
                 |> Maybe.map (Tuple.second >> .quasiChanges)
                 |> Maybe.withDefault []
 
-        lstrUrls =
-            -- if there are Check_IfAnswerCorrectUsingBackend collect the strUrls to request answer info from backend
-            lquasicwcmds
-                |> getListStrUrls
+        mbBkQuasicwcmd : Maybe QuasiChangeWorldCommandWithBackendInfo
+        mbBkQuasicwcmd =
+            matchingRule
+                |> Maybe.map (Tuple.second >> .quasiChangeWithBkend)
+
+        infoNeeded : MoreInfoNeeded
+        infoNeeded =
+            -- if there are Check_IfAnswerCorrectUsingBackend get the InfoNeeded strUrl to request answer info from backend
+            case mbBkQuasicwcmd of
+                Nothing ->
+                    NoInfoNeeded
+
+                Just quasicwcmd ->
+                    getInfoNeeded quasicwcmd
+
+        mbChangeFromQuasi : Maybe ChangeWorldCommand
+        mbChangeFromQuasi =
+            Maybe.map (replaceBkendQuasiCwCmdsWithCwcommands extraInfo) mbBkQuasicwcmd
 
         changesFromQuasi : List ChangeWorldCommand
         changesFromQuasi =
@@ -425,14 +446,21 @@ update interactableId extraInfo ((Model story) as model) =
 
         changes : List ChangeWorldCommand
         changes =
-            List.append changesFromQuasi somechanges
+            case mbChangeFromQuasi of
+                Nothing ->
+                    somechanges ++ changesFromQuasi
+
+                Just chg ->
+                    chg :: (somechanges ++ changesFromQuasi)
 
         addHistory : Model -> Model
         addHistory (Model story) =
             Model <| { story | history = story.history ++ [ ( interactableId, extraInfo ) ] }
     in
-        if (List.length lstrUrls > 0 && extraInfo.mbInputText /= Nothing && (extraInfo.mbInputText /= Just "")) then
-            ( model, Maybe.map Tuple.first matchingRule, [], List.head lstrUrls )
+        if (infoNeeded /= NoInfoNeeded && extraInfo.bkAnsStatus == NoInfoYet && extraInfo.mbInputTextForBackend /= Nothing && (extraInfo.mbInputTextForBackend /= Just "")) then
+            ( model, Maybe.map Tuple.first matchingRule, [], infoNeeded )
+        else if (infoNeeded /= NoInfoNeeded && extraInfo.bkAnsStatus == WaitingForInfoRequested) then
+            ( model, Maybe.map Tuple.first matchingRule, [], NoInfoNeeded )
         else
             let
                 ( newModel, lincidents ) =
@@ -441,32 +469,35 @@ update interactableId extraInfo ((Model story) as model) =
                 ( newModel |> addHistory
                 , Maybe.map Tuple.first matchingRule
                 , lincidents
-                , Nothing
+                , NoInfoNeeded
                 )
 
 
-getListStrUrls : List QuasiChangeWorldCommand -> List String
-getListStrUrls qcwcommands =
-    let
-        helperFunc : QuasiChangeWorldCommand -> String
-        helperFunc cwcommand =
-            case cwcommand of
-                Check_IfAnswerCorrectUsingBackend strUrl cAnsdata id ->
-                    strUrl
+getInfoNeeded : QuasiChangeWorldCommandWithBackendInfo -> MoreInfoNeeded
+getInfoNeeded qcwcommand =
+    case qcwcommand of
+        Check_IfAnswerCorrectUsingBackend strUrl cAnsdata id ->
+            AnswerInfoToQuestionNeeded strUrl
 
-                _ ->
-                    ""
-    in
-        qcwcommands
-            |> List.map (\cwcmd -> helperFunc cwcmd)
-            |> List.filter (\x -> x /= "")
+        _ ->
+            NoInfoNeeded
+
+
+replaceBkendQuasiCwCmdsWithCwcommands : Types.InteractionExtraInfo -> QuasiChangeWorldCommandWithBackendInfo -> ChangeWorldCommand
+replaceBkendQuasiCwCmdsWithCwcommands extraInfo quasiBkendCwCommand =
+    case quasiBkendCwCommand of
+        NoQuasiChangeWithBackend ->
+            NoChange
+
+        Check_IfAnswerCorrectUsingBackend strUrl cAnswerData interactableId ->
+            replaceCheckIfAnswerCorrectUsingBackend extraInfo.bkAnsStatus strUrl cAnswerData interactableId
 
 
 replaceQuasiCwCmdsWithCwcommands : Types.InteractionExtraInfo -> QuasiChangeWorldCommand -> ChangeWorldCommand
 replaceQuasiCwCmdsWithCwcommands extraInfo quasiCwCommand =
     case quasiCwCommand of
-        Check_IfAnswerCorrectUsingBackend strUrl cAnswerData interactableId ->
-            replaceCheckIfAnswerCorrectUsingBackend extraInfo.bkAnsStatus strUrl cAnswerData interactableId
+        NoQuasiChange ->
+            NoChange
 
         Check_IfAnswerCorrect theCorrectAnswers cAnswerData interactableId ->
             replaceCheckIfAnswerCorrect extraInfo.mbInputText theCorrectAnswers cAnswerData interactableId
@@ -499,32 +530,35 @@ replaceCheckIfAnswerCorrectUsingBackend bkendAnsStatus strUrl cAnswerData intera
                         cAnswerData.mbMaxNrTries
                         CaseInsensitiveAnswer
                         AnswerSpacesDontMatter
-                        cAnswerData.correctIncorrectFeedback
-                        cAnswerData.correctAnsTextDict
-                        cAnswerData.incorrectAnsTextDict
+                        cAnswerData.answerFeedback
+                        (Dict.fromList <| List.map (\x -> ( x.lgId, x.text )) answerinfo.successTextList)
+                        (Dict.fromList <| List.map (\x -> ( x.lgId, x.text )) answerinfo.insuccessTextList)
                         cAnswerData.lnewAttrs
                         cAnswerData.lotherInterAttrs
                     )
 
-                newCheckAnswerData =
-                    { checkAnswerData | lnewAttrs = cAnswerData.lnewAttrs ++ [ ( "bonusText", Astring answerinfo.additionalText ) ] }
+                newCheckAnswerDataIfSuccess =
+                    { checkAnswerData | lnewAttrs = cAnswerData.lnewAttrs ++ [ ( "bonusText", ADictStringString (List.map (\x -> ( x.lgId, x.text )) answerinfo.secretTextList |> Dict.fromList) ) ] }
+
+                newCheckAnswerDataIfInsuccess =
+                    checkAnswerData
             in
                 if (answerinfo.maxTriesReached) then
                     WriteTextToItem
                         ("  \n"
                             ++ " "
-                            ++ "___MAX_TRIES_ON_BACKEND___"
+                            ++ " ___MAX_TRIES_ON_BACKEND___ "
                             ++ " ,  "
                             ++ "  \n , "
-                            ++ "___YOUR_ANSWER___"
+                            ++ " ___YOUR_ANSWER___ "
                             ++ " "
                             ++ (answerinfo.playerAnswer)
                         )
                         interactableId
                 else if (answerinfo.answered && answerinfo.correctAnswer) then
-                    CheckIfAnswerCorrect ([ answerinfo.playerAnswer ]) (answerinfo.playerAnswer) newCheckAnswerData interactableId
+                    CheckIfAnswerCorrect ([ answerinfo.playerAnswer ]) (answerinfo.playerAnswer) newCheckAnswerDataIfSuccess interactableId
                 else if (answerinfo.answered && answerinfo.incorrectAnswer) then
-                    CheckIfAnswerCorrect ([ answerinfo.playerAnswer ++ "something" ]) answerinfo.playerAnswer checkAnswerData interactableId
+                    CheckIfAnswerCorrect ([ answerinfo.playerAnswer ++ "something" ]) answerinfo.playerAnswer newCheckAnswerDataIfInsuccess interactableId
                 else
                     -- ( not answerinfo.answered )
                     NoChange
@@ -632,14 +666,12 @@ type alias Rule =
     Types.Rule
 
 
-type alias Rule_ =
-    Types.Rule_
-
-
-{-| All the rules in your story.
--}
 type alias Rules =
     Types.Rules
+
+
+type alias Rule_ =
+    Types.Rule_
 
 
 {-| -}
@@ -899,6 +931,14 @@ type alias ChangeWorldCommand =
     Types.ChangeWorldCommand
 
 
+type alias QuasiChangeWorldCommand =
+    Types.QuasiChangeWorldCommand
+
+
+type alias QuasiChangeWorldCommandWithBackendInfo =
+    Types.QuasiChangeWorldCommandWithBackendInfo
+
+
 {-| Changes the current location.
 -}
 moveTo : String -> ChangeWorldCommand
@@ -983,17 +1023,17 @@ check_IfAnswerCorrect =
 
 simpleCheck_IfAnswerCorrect : List String -> Maybe Int -> String -> QuasiChangeWorldCommand
 simpleCheck_IfAnswerCorrect lcorrectAnswers mbNrTries interactableId =
-    Check_IfAnswerCorrect lcorrectAnswers (CheckAnswerData mbNrTries CaseInsensitiveAnswer AnswerSpacesDontMatter True Dict.empty Dict.empty [] []) interactableId
+    Check_IfAnswerCorrect lcorrectAnswers (CheckAnswerData mbNrTries CaseInsensitiveAnswer AnswerSpacesDontMatter HeaderAnswerAndCorrectIncorrect Dict.empty Dict.empty [] []) interactableId
 
 
-check_IfAnswerCorrectUsingBackend : String -> CheckBkendAnswerData -> String -> QuasiChangeWorldCommand
+check_IfAnswerCorrectUsingBackend : String -> CheckBkendAnswerData -> String -> QuasiChangeWorldCommandWithBackendInfo
 check_IfAnswerCorrectUsingBackend =
     Check_IfAnswerCorrectUsingBackend
 
 
-simpleCheck_IfAnswerCorrectUsingBackend : String -> Maybe Int -> String -> QuasiChangeWorldCommand
+simpleCheck_IfAnswerCorrectUsingBackend : String -> Maybe Int -> String -> QuasiChangeWorldCommandWithBackendInfo
 simpleCheck_IfAnswerCorrectUsingBackend strUrl mbNrTries interactableId =
-    Check_IfAnswerCorrectUsingBackend strUrl (CheckBkendAnswerData mbNrTries True Dict.empty Dict.empty [] []) interactableId
+    Check_IfAnswerCorrectUsingBackend strUrl (CheckBkendAnswerData mbNrTries HeaderAnswerAndCorrectIncorrect [] []) interactableId
 
 
 checkAndAct_IfChosenOptionIs : CheckOptionData -> String -> QuasiChangeWorldCommand
@@ -1064,13 +1104,18 @@ setAttributeValue val attrId interactableId =
             Engine.Manifest.getReservedAttrIds
     in
         if (not (List.member attrId reservedAttrIds)) then
-            CreateAttributeIfNotExists val attrId interactableId
+            CreateAttributeIfNotExistsAndOrSetValue val attrId interactableId
         else
             let
                 _ =
                     Debug.log "Sorry ! It was not possible to set attribute value . That's a 'reserved' attributeId : " attrId
             in
                 NoChange
+
+
+removeAttributeIfExists : String -> String -> ChangeWorldCommand
+removeAttributeIfExists =
+    RemoveAttributeIfExists
 
 
 {-| Adds a character to a location, or moves a character to a different location (characters can only be in one location at a time, or off-screen). (Use moveTo to move yourself between locations.)
@@ -1127,12 +1172,12 @@ addChoiceLanguage =
     AddChoiceLanguage
 
 
-checkAnswerData : Maybe Int -> AnswerCase -> AnswerSpaces -> Bool -> Dict String String -> Dict String String -> List ( String, AttrTypes ) -> List ( String, String, AttrTypes ) -> CheckAnswerData
+checkAnswerData : Maybe Int -> AnswerCase -> AnswerSpaces -> AnswerFeedback -> Dict String String -> Dict String String -> List ( String, AttrTypes ) -> List ( String, String, AttrTypes ) -> CheckAnswerData
 checkAnswerData =
     CheckAnswerData
 
 
-checkBkendAnswerData : Maybe Int -> Bool -> Dict String String -> Dict String String -> List ( String, AttrTypes ) -> List ( String, String, AttrTypes ) -> CheckBkendAnswerData
+checkBkendAnswerData : Maybe Int -> AnswerFeedback -> List ( String, AttrTypes ) -> List ( String, String, AttrTypes ) -> CheckBkendAnswerData
 checkBkendAnswerData =
     CheckBkendAnswerData
 
@@ -1179,8 +1224,8 @@ aDictStringLSS =
 
 completeTheRule : Rule_ -> Rule
 completeTheRule ruleData =
-    --returns a rule with an empty list of quasiChangeWorldCommands
-    Rule ruleData.interaction ruleData.conditions ruleData.changes []
+    --returns a rule with  the 'null' quasiChangeWorldCommands
+    Rule ruleData.interaction ruleData.conditions ruleData.changes [] NoQuasiChangeWithBackend
 
 
 caseSensitiveAnswer : Types.AnswerCase
@@ -1201,6 +1246,26 @@ answerSpacesMatter =
 answerSpacesDontMatter : Types.AnswerSpaces
 answerSpacesDontMatter =
     AnswerSpacesDontMatter
+
+
+headerAnswerAndCorrectIncorrect : Types.AnswerFeedback
+headerAnswerAndCorrectIncorrect =
+    HeaderAnswerAndCorrectIncorrect
+
+
+noFeedback : Types.AnswerFeedback
+noFeedback =
+    NoFeedback
+
+
+noQuasiChange : Types.QuasiChangeWorldCommand
+noQuasiChange =
+    NoQuasiChange
+
+
+noQuasiChangeWithBackend : Types.QuasiChangeWorldCommandWithBackendInfo
+noQuasiChangeWithBackend =
+    NoQuasiChangeWithBackend
 
 
 {-| Scenes are a way to further constrain rules. You could have a scene for each leg of your story to make sure only the rules for that scene will apply. Or you may start a scene at a turning point in your story to "activate" special rules that apply to that scene. This is how you start or switch to a new scene. Note that you can only have one scene active at at time.

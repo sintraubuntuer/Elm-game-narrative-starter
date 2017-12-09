@@ -483,6 +483,9 @@ update change ( manifest, linteractionincidents ) =
         CreateOrSetAttributeValueFromOtherInterAttr attrId otherInterAtrrId otherInterId interactableId ->
             manifestUpdate interactableId (createOrSetAttributeValueFromOtherInterAttr attrId otherInterAtrrId otherInterId manifest) ( manifest, linteractionincidents )
 
+        RemoveAttributeIfExists attrId interactableId ->
+            manifestUpdate interactableId (removeAttributeIfExists attrId) ( manifest, linteractionincidents )
+
         MakeItemWritable id ->
             manifestUpdate id makeItemWritable ( manifest, linteractionincidents )
 
@@ -989,13 +992,16 @@ checkIfAnswerCorrect theCorrectAnswers playerAnswer checkAnsData mbinteractable 
                     "___REACH_MAX_NR_TRIES___"
 
                 playerAns =
-                    "  \n ___YOUR_ANSWER___" ++ " " ++ playerAnswer
+                    if (checkAnsData.answerFeedback == JustPlayerAnswer || checkAnsData.answerFeedback == HeaderAndAnswer || checkAnsData.answerFeedback == HeaderAnswerAndCorrectIncorrect) then
+                        "  \n ___YOUR_ANSWER___" ++ " " ++ playerAnswer
+                    else
+                        ""
 
                 answerFeedback =
                     correct
                         ++ "  \n"
                         |> (\x ->
-                                if checkAnsData.correctIncorrectFeedback then
+                                if (checkAnsData.answerFeedback == HeaderAnswerAndCorrectIncorrect) then
                                     x
                                 else
                                     ""
@@ -1020,7 +1026,7 @@ checkIfAnswerCorrect theCorrectAnswers playerAnswer checkAnsData mbinteractable 
                                         ""
                     in
                         playerAns
-                            ++ if checkAnsData.correctIncorrectFeedback then
+                            ++ if (checkAnsData.answerFeedback == HeaderAnswerAndCorrectIncorrect) then
                                 ansFeedback
                                else
                                 ""
@@ -1485,7 +1491,8 @@ removeAttributeIfExists attrId mbinteractable =
                 Just (Location { ldata | attributes = newAttributes })
 
         Nothing ->
-            Nothing
+            mbinteractable
+                |> writeInteractionIncident "error" ("Trying to remove attribute from  interactable that doesnt exist ")
 
 
 getInteractableAttribute : String -> Maybe Interactable -> Maybe AttrTypes

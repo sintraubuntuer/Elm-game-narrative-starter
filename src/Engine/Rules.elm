@@ -16,8 +16,8 @@ findMatchingRule story mbInputText interaction =
         |> Dict.toList
         |> List.filter (Tuple.second >> matchesRule story mbInputText interaction)
         |> List.map
-            (\( id, { interaction, conditions, changes, quasiChanges } ) ->
-                { id = id, interaction = interaction, conditions = conditions, changes = changes, quasiChanges = quasiChanges }
+            (\( id, { interaction, conditions, changes, quasiChanges, quasiChangeWithBkend } ) ->
+                { id = id, interaction = interaction, conditions = conditions, changes = changes, quasiChanges = quasiChanges, quasiChangeWithBkend = quasiChangeWithBkend }
             )
         |> bestMatch
             (numConstrictionsWeight
@@ -25,8 +25,8 @@ findMatchingRule story mbInputText interaction =
                 +> specificityWeight
             )
         |> Maybe.map
-            (\{ id, interaction, conditions, changes, quasiChanges } ->
-                ( id, { interaction = interaction, conditions = conditions, changes = changes, quasiChanges = quasiChanges } )
+            (\{ id, interaction, conditions, changes, quasiChanges, quasiChangeWithBkend } ->
+                ( id, { interaction = interaction, conditions = conditions, changes = changes, quasiChanges = quasiChanges, quasiChangeWithBkend = quasiChangeWithBkend } )
             )
 
 

@@ -30,6 +30,30 @@ initialChoiceLanguages =
         ]
 
 
+{-| Info to be displayed on StartScreen
+-}
+startScreenInfo : StartScreenInfo
+startScreenInfo =
+    { mainImage = "introImage.png"
+    , title_line1 = "A Guided Tour Through Vila Sassetti - Sintra"
+    , title_line2 = ""
+    , byLine = "An Interactive Story by Sintra Ubuntuer"
+    , smallIntro = """ a guided tour through Vila Sassetti ( Quinta da Amizade ) - Sintra
+                     """
+    , tboxNamePlaceholder = "investigator"
+    }
+
+
+endScreenInfo : EndScreenInfo
+endScreenInfo =
+    { mainImage = "finalImage.png"
+    , congratsMessage1 = "Congratulations ! You reached the End ! ..."
+    , congratsMessage2 = "You are now a hiking trail Master  :)"
+    , endScreenText = """....
+                        """
+    }
+
+
 
 {- Here is where you can write all of your story text, which keeps the Rules.elm file a little cleaner.
    The narrative that you add to a rule will be shown when that rule matches.  If you give a list of strings, each time the rule matches, it will show the next narrative in the list, which is nice for adding variety and texture to your story.
@@ -1221,18 +1245,19 @@ creditsInformation =
 http://www.parquesdesintra.pt/
 
 
+### Elm Language and package ecosystem ###
+
+Evan Czaplicki ,  Richard Feldman , Werner de Groot , Dave Keen ...
+
 ### Elm Narrative Engine : ###
 
 Jeff Schomay
-( that in no way endorses this particular extension or narrative)
 
-
+( the persons above in no way endorse this particular extension or narrative)
 
 ### extensions to the Narrative Engine : ###
 
 Nuno Torres
-
-
 
 ### Game-Narrative ###
 

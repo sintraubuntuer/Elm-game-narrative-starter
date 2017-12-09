@@ -123,6 +123,11 @@ type alias GeolocationInfo =
     Geolocation.Location
 
 
+type MoreInfoNeeded
+    = NoInfoNeeded
+    | AnswerInfoToQuestionNeeded String
+
+
 type BackendAnswerStatus
     = NoInfoYet
     | WaitingForInfoRequested
@@ -138,13 +143,17 @@ type alias AnswerInfo =
     , answered : Bool
     , correctAnswer : Bool
     , incorrectAnswer : Bool
-    , additionalText : String
+    , secretTextList : List { lgId : String, text : String }
+    , successTextList : List { lgId : String, text : String }
+    , insuccessTextList : List { lgId : String, text : String }
     }
 
 
 type alias InteractionExtraInfo =
     { mbInputText : Maybe String
+    , mbInputTextForBackend : Maybe String
     , geolocationInfoText : String
+    , currentLocation : String
     , bkAnsStatus : BackendAnswerStatus
     , mbMatchedRuleId : Maybe String
     }
@@ -166,6 +175,7 @@ type alias Rule =
     , conditions : List Condition
     , changes : List ChangeWorldCommand
     , quasiChanges : List QuasiChangeWorldCommand
+    , quasiChangeWithBkend : QuasiChangeWorldCommandWithBackendInfo
     }
 
 
@@ -229,6 +239,7 @@ type ChangeWorldCommand
     | CreateOrSetAttributeValueFromOtherInterAttr String String ID ID -- nameOfAttributeId otherInteractableAttributeId otherInteractableId InteractableID
     | CreateAMultiChoice (Dict String (List ( String, String ))) ID
     | RemoveMultiChoiceOptions ID
+    | RemoveAttributeIfExists String ID
     | IncreaseCounter String ID
     | MoveItemOffScreen ID
     | MoveCharacterToLocation ID ID
@@ -248,11 +259,16 @@ type ChangeWorldCommand
 
 
 type QuasiChangeWorldCommand
-    = Check_IfAnswerCorrectUsingBackend String CheckBkendAnswerData ID
+    = NoQuasiChange
     | Check_IfAnswerCorrect (List String) CheckAnswerData ID
     | CheckAndAct_IfChosenOptionIs CheckOptionData ID
     | Write_GpsInfoToItem ID
     | Write_InputTextToItem ID
+
+
+type QuasiChangeWorldCommandWithBackendInfo
+    = NoQuasiChangeWithBackend
+    | Check_IfAnswerCorrectUsingBackend String CheckBkendAnswerData ID
 
 
 type alias CheckOptionData =
@@ -267,7 +283,7 @@ type alias CheckAnswerData =
     { mbMaxNrTries : Maybe Int
     , answerCase : AnswerCase
     , answerSpaces : AnswerSpaces
-    , correctIncorrectFeedback : Bool
+    , answerFeedback : AnswerFeedback
     , correctAnsTextDict : Dict String String
     , incorrectAnsTextDict : Dict String String
     , lnewAttrs : List ( String, AttrTypes )
@@ -277,12 +293,18 @@ type alias CheckAnswerData =
 
 type alias CheckBkendAnswerData =
     { mbMaxNrTries : Maybe Int
-    , correctIncorrectFeedback : Bool
-    , correctAnsTextDict : Dict String String
-    , incorrectAnsTextDict : Dict String String
+    , answerFeedback : AnswerFeedback
     , lnewAttrs : List ( String, AttrTypes )
     , lotherInterAttrs : List ( String, String, AttrTypes )
     }
+
+
+type AnswerFeedback
+    = NoFeedback
+    | JustHeader
+    | JustPlayerAnswer
+    | HeaderAndAnswer
+    | HeaderAnswerAndCorrectIncorrect
 
 
 type AnswerCase

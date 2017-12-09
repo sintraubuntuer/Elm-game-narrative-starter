@@ -6,6 +6,7 @@ import Dict exposing (Dict)
 import OurStory2.Narrative as Narrative
 
 
+--import InfoForBkendApiRequests exposing (backendAnswerCheckerUrl)
 --import Audio
 
 import ClientTypes exposing (AudioFileInfo)
@@ -135,11 +136,6 @@ makeAllQuestionsWritable =
     makeQuestionsWritableExcept []
 
 
-backendAnswerCheckerUrl : String
-backendAnswerCheckerUrl =
-    "http://127.0.0.1:5000/questions/"
-
-
 {-| A simple helper for making rules, since I want all of my rules to include RuleData and Narrative components.
 -}
 rule : String -> Engine.Rule_ -> Dict String (List String) -> Entity
@@ -249,8 +245,8 @@ standardInteractionWithQuestionNr questionNr =
                         caseInsensitiveAnswer
                         -- whether the answer checker should  pay attention to whitespaces
                         answerSpacesDontMatter
-                        -- whether to show feedback about answer ( correct or incorrect )
-                        True
+                        -- type of feedback to show about answer ( correct , incorrect , etc )
+                        headerAnswerAndCorrectIncorrect
                         -- Additional text dict ( in several languages) to show if question is correctly answered)
                         (Narrative.additionalTextIfAnswerCorrectDict questionNr)
                         -- Additional text dict ( in several languages) to add if question is incorrectly answered
@@ -260,9 +256,8 @@ standardInteractionWithQuestionNr questionNr =
                         [ ( getStageId stageNr, "additionalTextDict", aDictStringString Narrative.additionalStageInfoAfterQuestionAnsweredDict ) ]
                     )
                     (getQuestionId questionNr)
-
-                --simpleCheck_IfAnswerCorrect  correctAnswers   ( Narrative.getQuestionsMaxNrTries questionNr ) ( getQuestionId questionNr )
                 ]
+            , quasiChangeWithBkend = noQuasiChangeWithBackend
             }
             (Narrative.interactingWithQuestionNDict questionNr)
 
@@ -303,16 +298,15 @@ interactionWithQuestionNrAllQuestionsAnsweredButThisOne questionNr =
                         (Narrative.getQuestionsMaxNrTries questionNr)
                         caseInsensitiveAnswer
                         answerSpacesDontMatter
-                        True
+                        headerAnswerAndCorrectIncorrect
                         (Narrative.additionalTextIfAnswerCorrectDict questionNr)
                         (Narrative.additionalTextIfAnswerIncorrectDict questionNr)
                         ([ ( "warningMessage", aDictStringString Narrative.goodNewsMessageAfterAllQuestionsAnsweredDict ) ] ++ lsuggestedInteractionIfLastStage)
                         additionalTextForStages
                     )
                     ("question" ++ toString questionNr)
-
-                --simpleCheck_IfAnswerCorrect  correctAnswers   ( Narrative.getQuestionsMaxNrTries questionNr )  ( "question" ++ toString questionNr )
                 ]
+            , quasiChangeWithBkend = noQuasiChangeWithBackend
             }
             (Narrative.interactingWithQuestionNDict questionNr)
 
@@ -356,6 +350,7 @@ lRulesInteractingWithGps =
             []
         , quasiChanges =
             [ write_GpsInfoToItem "gps" ]
+        , quasiChangeWithBkend = noQuasiChangeWithBackend
         }
         Narrative.lookAtGpsDict
     ]

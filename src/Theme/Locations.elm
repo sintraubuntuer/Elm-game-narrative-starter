@@ -55,26 +55,6 @@ view exits currentLocation lgId bWithSidebar =
             else
                 span [] []
 
-        exitsList =
-            exits
-                |> List.map
-                    (\( direction, entity ) ->
-                        [ span
-                            [ class "CurrentSummary__StoryElement u-selectable"
-                            , onClick <| Interact <| Tuple.first entity
-                            ]
-                            [ text <|
-                                (.name <| getSingleLgDisplayInfo lgId entity)
-                                    ++ (" is to the " ++ toString direction ++ ".")
-                            ]
-                        ]
-                            |> if (bWithSidebar) then
-                                p []
-                               else
-                                span []
-                    )
-                |> div []
-
         locationsClass =
             if bWithSidebar then
                 "Locations"
@@ -87,6 +67,12 @@ view exits currentLocation lgId bWithSidebar =
               else
                 text ""
             , div [ class "Locations__list" ]
-                [ theExitsList
+                [ {- }
+                     if ( not bWithSidebar ) then
+                         text "Connecting locations"
+                     else
+                         text ""
+                  -}
+                  theExitsList
                 ]
             ]

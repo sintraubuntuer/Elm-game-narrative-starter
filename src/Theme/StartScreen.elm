@@ -11,32 +11,31 @@ import ClientTypes exposing (..)
 import Theme.AnswerBox exposing (..)
 
 
-view : String -> Theme.AnswerBox.Model -> Html ClientTypes.Msg
-view baseImgUrl answerBoxModel =
+view : String -> StartScreenInfo -> Theme.AnswerBox.Model -> Html ClientTypes.Msg
+view baseImgUrl startScreenInfo answerBoxModel =
     let
         imgUrl =
             if (baseImgUrl == "") then
-                "img/introImage.png"
+                "img/" ++ startScreenInfo.mainImage
             else
-                baseImgUrl ++ "introImage.png"
+                baseImgUrl ++ startScreenInfo.mainImage
     in
         div [ class "TitlePage" ]
             [ h1 [ class "TitlePage__Title" ]
-                [ text <| "A Guided Tour Through Vila Sassetti - Sintra"
+                [ text <| startScreenInfo.title_line1
                 , br [] []
+                , text startScreenInfo.title_line2
                 ]
-            , h3 [ class "TitlePage__Byline" ] [ text "Uma história interactiva por Sintra Ubuntuer " ]
+            , h3 [ class "TitlePage__Byline" ] [ text startScreenInfo.byLine ]
             , div [ class "TitlePage__Prologue markdown-body" ]
                 [ p []
-                    [ text """
-                               a guided tour through Vila Sassetti ( Quinta da Amizade ) - Sintra  ...
-                               """
+                    [ text startScreenInfo.smallIntro
                     ]
                 , img [ src imgUrl, class "StartScreenImage" ] []
                 ]
             , div [ class "textCenter" ]
                 [ h3 [] [ text "Please type your name to start game : " ]
-                , Theme.AnswerBox.view answerBoxModel.answerBoxText "pt" False Nothing (Just "investigator") "AnswerBoxStartScreen"
+                , Theme.AnswerBox.view answerBoxModel.answerBoxText "pt" False Nothing (Just startScreenInfo.tboxNamePlaceholder) "AnswerBoxStartScreen"
                 ]
             , span
                 [ class "TitlePage__StartGame"

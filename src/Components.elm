@@ -432,6 +432,7 @@ getRuleData ( id, components ) =
             , conditions = []
             , changes = []
             , quasiChanges = []
+            , quasiChangeWithBkend = Engine.noQuasiChangeWithBackend
             }
 
 

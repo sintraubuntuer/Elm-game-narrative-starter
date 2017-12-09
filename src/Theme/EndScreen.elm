@@ -9,33 +9,24 @@ import Html.Attributes exposing (..)
 import ClientTypes exposing (..)
 
 
-view : String -> Html ClientTypes.Msg
-view baseImgUrl =
+view : String -> EndScreenInfo -> Html ClientTypes.Msg
+view baseImgUrl endScreenInfo =
     let
         imgUrl =
             if (baseImgUrl == "") then
-                -- "img/finalImage.png"
-                "img/finalImage.png"
+                "img/" ++ endScreenInfo.mainImage
             else
-                baseImgUrl ++ "finalImage.png"
-
-        congratsMessage1 =
-            "Congratulations ! You reached the End ! ..."
-
-        congratsMessage2 =
-            "You are now a hiking trail Master  :)"
+                baseImgUrl ++ endScreenInfo.mainImage
     in
         div [ class "TitlePage" ]
             [ h1 [ class "TitlePage__Title" ]
-                [ text <| congratsMessage1
+                [ text <| endScreenInfo.congratsMessage1
                 , br [] []
-                , text <| congratsMessage2
+                , text <| endScreenInfo.congratsMessage2
                 ]
             , div [ class "TitlePage__Prologue markdown-body" ]
                 [ p []
-                    [ text
-                        """...
-                                """
+                    [ text endScreenInfo.endScreenText
                     ]
                 , img [ src imgUrl, class "StartScreenImage" ] []
                 ]

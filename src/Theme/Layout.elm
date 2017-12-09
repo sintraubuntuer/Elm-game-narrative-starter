@@ -6,7 +6,6 @@ import Theme.CurrentSummary exposing (..)
 import Theme.Storyline exposing (..)
 import Theme.Locations exposing (..)
 import Theme.Inventory exposing (..)
-import Theme.AnswerBox exposing (..)
 import Theme.Settings exposing (..)
 import Theme.AlertMessages exposing (..)
 import ClientTypes exposing (..)
@@ -25,8 +24,8 @@ type alias DisplayState =
     , audioAutoplay : Bool
     , answerOptionsDict : Dict String (List ( String, String ))
     , layoutWithSidebar : Bool
-    , boolTextBoxInSidebar : Bool
     , boolTextBoxInStoryline : Bool
+    , mbTextBoxPlaceholderText : Maybe String
     , settingsModel : Theme.Settings.Model
     , alertMessages : List String
     , ending : Maybe String
@@ -72,6 +71,7 @@ view displayState =
                         displayState.storyLine
                         displayState.settingsModel.displayLanguage
                         displayState.boolTextBoxInStoryline
+                        displayState.mbTextBoxPlaceholderText
                         displayState.answerBoxMbText
                         displayState.answerOptionsDict
                         displayState.ending
@@ -96,16 +96,6 @@ viewExtraInfo displayState layoutClassStr =
             displayState.itemsInInventory
             displayState.settingsModel.displayLanguage
             displayState.settingsModel.layoutWithSidebar
-        , if (displayState.boolTextBoxInSidebar) then
-            Theme.AnswerBox.view
-                displayState.answerBoxMbText
-                displayState.settingsModel.displayLanguage
-                True
-                Nothing
-                Nothing
-                "AnswerBox"
-          else
-            text ""
         , if (displayState.settingsModel.layoutWithSidebar) then
             Theme.Settings.view displayState.settingsModel
           else

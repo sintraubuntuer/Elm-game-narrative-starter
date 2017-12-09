@@ -6,6 +6,7 @@ import Dict exposing (Dict)
 import OurStory3.Narrative as Narrative
 
 
+--import InfoForBkendApiRequests exposing (backendAnswerCheckerUrl)
 --import Audio
 
 import ClientTypes exposing (AudioFileInfo)
@@ -297,16 +298,6 @@ makeAllQuestionsWritable =
     makeQuestionsWritableExcept []
 
 
-backendAnswerCheckerUrl : String
-backendAnswerCheckerUrl =
-    "http://127.0.0.1:5000/questions/"
-
-
-
---"https://serrot73.pythonanywhere.com/questions/"
---"https://questionanswerntapp.herokuapp.com/questions/"
-
-
 {-| A simple helper for making rules, since I want all of my rules to include RuleData and Narrative components.
 -}
 rule : String -> Engine.Rule_ -> Dict String (List String) -> Entity
@@ -451,7 +442,7 @@ standardInteractionWithQuestionNr questionNr =
                         -- whether the answer checker should  pay attention to whitespaces
                         answerSpacesDontMatter
                         -- whether to show feedback about answer ( correct or incorrect )
-                        True
+                        headerAnswerAndCorrectIncorrect
                         -- Additional text dict ( in several languages) to show if question is correctly answered)
                         (Narrative.additionalTextIfAnswerCorrectDict questionNr)
                         -- Additional text dict ( in several languages) to add if question is incorrectly answered
@@ -462,9 +453,9 @@ standardInteractionWithQuestionNr questionNr =
                     )
                     (getQuestionId questionNr)
 
-                --  questionId
                 --simpleCheck_IfAnswerCorrect  correctAnswers (Just 5)  ( "question" ++ toString questionNr )
                 ]
+            , quasiChangeWithBkend = noQuasiChangeWithBackend
             }
             (Narrative.interactingWithQuestionDict questionNr)
 
@@ -503,7 +494,7 @@ interactionWithQuestionNrAllQuestionsAndOptionsAnsweredButThisOne ( questionNr, 
                         (Narrative.getQuestionsMaxNrTries questionNr)
                         caseInsensitiveAnswer
                         answerSpacesDontMatter
-                        True
+                        headerAnswerAndCorrectIncorrect
                         (Narrative.additionalTextIfAnswerCorrectDict questionNr)
                         (Narrative.additionalTextIfAnswerIncorrectDict questionNr)
                         ([ ( "warningMessage", aDictStringString Narrative.goodNewsMessageAfterAllQuestionsAnsweredDict ) ] ++ lsuggestedInteractionIfLastStage)
@@ -513,6 +504,7 @@ interactionWithQuestionNrAllQuestionsAndOptionsAnsweredButThisOne ( questionNr, 
 
                 --simpleCheck_IfAnswerCorrect  correctAnswers   ( Narrative.getQuestionsMaxNrTries questionNr )  ( "question" ++ toString questionNr )
                 ]
+            , quasiChangeWithBkend = noQuasiChangeWithBackend
             }
             (Narrative.interactingWithQuestionDict questionNr)
 
@@ -547,8 +539,7 @@ standardInteractionWithMultiOptionNr optionNr =
             , changes = []
             , quasiChanges =
                 allCheckAndActs
-
-            --simpleCheck_IfAnswerCorrect  correctAnswers (Just 5)  ( "question" ++ toString questionNr )
+            , quasiChangeWithBkend = noQuasiChangeWithBackend
             }
             (Narrative.interactingWithMultiOptionDict optionNr)
 
@@ -600,8 +591,7 @@ interactionWithOptionNrAllQuestionsAndOptionsAnsweredButThisOne ( optionNr, stag
                 []
             , quasiChanges =
                 allCheckAndActs
-
-            --simpleCheck_IfAnswerCorrect  correctAnswers (Just 5)  ( "question" ++ toString questionNr )
+            , quasiChangeWithBkend = noQuasiChangeWithBackend
             }
             (Narrative.interactingWithMultiOptionDict optionNr)
 
@@ -640,7 +630,7 @@ ruleForMultiChoiceAnswer =
                     (Just 10)
                     caseInsensitiveAnswer
                     answerSpacesDontMatter
-                    True
+                    headerAnswerAndCorrectIncorrect
                     (Dict.fromList [ ( "pt", "Muito Bem" ), ( "en", "Very Good" ) ])
                     Dict.empty
                     []
@@ -648,6 +638,7 @@ ruleForMultiChoiceAnswer =
                 )
                 "multiChoiceQuestion"
             ]
+        , quasiChangeWithBkend = noQuasiChangeWithBackend
         }
         (Narrative.interactingWithMultiChoiceQuestionDict)
 
@@ -666,6 +657,7 @@ ruleForMultiChoiceOption1 =
             , checkAndAct_IfChosenOptionIs (checkOptionData "no" (Dict.fromList [ ( "pt", "de certeza que queres desistir ?" ), ( "en", "Are you sure you want to quit ?" ) ]) [] []) "multiChoiceOption1"
             , checkAndAct_IfChosenOptionIs (checkOptionData "maybe" (Dict.fromList [ ( "pt", "como é possível não saber ??" ), ( "en", "how can you not know ??" ) ]) [] []) "multiChoiceOption1"
             ]
+        , quasiChangeWithBkend = noQuasiChangeWithBackend
         }
         (Narrative.interactingWithMultiChoiceOptionAtStage6Dict "")
 
@@ -690,6 +682,7 @@ lRulesInteractingWithGps =
             []
         , quasiChanges =
             [ write_GpsInfoToItem "gps" ]
+        , quasiChangeWithBkend = noQuasiChangeWithBackend
         }
         Narrative.lookAtGpsDict
     ]

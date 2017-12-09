@@ -1,6 +1,6 @@
 # Elm Game Narrative Starter
- 
-Elm game/narrative Engine and story starter
+
+ Elm game/narrative Engine and story starter
 adds several extensions to the original Elm Narrative Engine by Jeff Schomay  :
 [elm-interactive-story-starter](https://github.com/jschomay/elm-interactive-story-starter)
 that were implemented by Nuno Torres
@@ -49,5 +49,5 @@ Some of the questions were converted to a multioption answer type
 
 
 Enjoy playing the  guided tour/questionnaire ( proof of concept ) example at
-[Guided Tour through Vila Sassetti - Sintra](https://sintraubuntuer.github.io/pages/guided-tour-through-vila-sassetti-sintra.html)
+[Guided Tour through Vila Sassetti - Sintra](https://sintraubuntuer.github.io/pages/guided-tour-through-vila-sassetti-sintra.html){:target="_blank"}
 and enjoy creating your interactive story!

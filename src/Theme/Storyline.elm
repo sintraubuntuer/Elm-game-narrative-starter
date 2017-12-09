@@ -16,10 +16,11 @@ view :
     -> String
     -> Bool
     -> Maybe String
+    -> Maybe String
     -> Dict String (List ( String, String ))
     -> Maybe String
     -> Html Msg
-view storyLine lgId showTextBoxInStoryline mbanswerboxtext answerOptionsDict ending =
+view storyLine lgId showTextBoxInStoryline mbplaceholdertext mbanswerboxtext answerOptionsDict ending =
     let
         storyLi i { interactableName, interactableId, isWritable, interactableCssSelector, narrative, mbAudio, mbSuggestedInteractionId, mbSuggestedInteractionName, isLastInZipper } =
             let
@@ -37,7 +38,7 @@ view storyLine lgId showTextBoxInStoryline mbanswerboxtext answerOptionsDict end
 
                 viewMbAnswerBox =
                     if (i == 0 && isWritable && showTextBoxInStoryline) then
-                        Theme.AnswerBox.view mbanswerboxtext lgId False (Just interactableId) Nothing "AnswerBoxInStoryLine2"
+                        Theme.AnswerBox.view mbanswerboxtext lgId False (Just interactableId) mbplaceholdertext "AnswerBoxInStoryLine2"
                     else
                         text ""
 

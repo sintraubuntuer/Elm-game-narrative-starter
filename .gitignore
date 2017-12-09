@@ -1,3 +1,6 @@
+*~
+index2.html
+index3.html
 elm-stuff/
 node_modules/
 tmp/
@@ -7,3 +10,4 @@ sound/
 img/
 compiledjs/
 outputjs/
+stageGPSCoords.txt

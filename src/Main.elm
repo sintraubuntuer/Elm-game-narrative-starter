@@ -1,10 +1,10 @@
 port module Main exposing (..)
 
 import Engine exposing (..)
-import Types as EngineTypes exposing (BackendAnswerStatus(..), AnswerInfo, InteractionExtraInfo)
-import OurStory2.Manifest as Manifest
-import OurStory2.Rules as Rules
-import OurStory2.Narrative as Narrative
+import Types as EngineTypes exposing (BackendAnswerStatus(..), AnswerInfo, InteractionExtraInfo, MoreInfoNeeded(..))
+import OurStory3.Manifest as Manifest
+import OurStory3.Rules as Rules
+import OurStory3.Narrative as Narrative
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Tuple
@@ -22,6 +22,7 @@ import Components exposing (..)
 import Dict exposing (Dict)
 import List.Zipper as Zipper exposing (Zipper)
 import Json.Decode
+import Json.Decode.Pipeline
 import Geolocation
 import Task
 import TranslationHelper exposing (getInLanguage)
@@ -31,6 +32,7 @@ import SomeTests
 import Http
 import Regex
 import Update.Extra
+import InfoForBkendApiRequests
 
 
 {- This is the kernel of the whole app.  It glues everything together and handles some logic such as choosing the correct narrative to display.
@@ -59,7 +61,9 @@ type alias Model =
     , languageNarrativeContents : Dict String (Dict String (Zipper String))
     , languageAudioContents : Dict String (Dict String ClientTypes.AudioFileInfo)
     , displayStartScreen : Bool
+    , startScreenInfo : StartScreenInfo
     , displayEndScreen : Bool
+    , endScreenInfo : EndScreenInfo
     }
 
 
@@ -128,7 +132,9 @@ init flags =
           , languageNarrativeContents = Dict.map (curry getLanguagesNarrativeDict) dictEntities
           , languageAudioContents = Dict.map (curry getLanguagesAudioDict) dictEntities
           , displayStartScreen = True
+          , startScreenInfo = Narrative.startScreenInfo
           , displayEndScreen = False
+          , endScreenInfo = Narrative.endScreenInfo
           }
         , Cmd.none
         )
@@ -312,10 +318,13 @@ update msg model =
                         ( newModel, Cmd.none )
 
                 InteractStepTwo interactableId interactionExtraInfo ->
-                    if (Dict.get interactableId model.bkendAnswerStatusDict /= Just EngineTypes.WaitingForInfoRequested) then
-                        -- only allow interaction if this interactable isnt waiting for some backend answer confirmation
+                    -- only allow interaction if this interactable isnt waiting for some backend answer confirmation
+                    if (Dict.get interactableId model.bkendAnswerStatusDict == Just EngineTypes.WaitingForInfoRequested) then
+                        -- Interactable is awaiting for some backend confirmation. No interaction possible at this time
+                        ( { model | alertMessages = "Please Wait ... \n" :: model.alertMessages }, Cmd.none )
+                    else
                         let
-                            ( newEngineModel, maybeMatchedRuleId, lInteractionIncidents, mbstrUrl ) =
+                            ( newEngineModel, maybeMatchedRuleId, lInteractionIncidents, infoNeeded ) =
                                 Engine.update
                                     interactableId
                                     interactionExtraInfo
@@ -327,9 +336,8 @@ update msg model =
                             newInteractionExtraInfo =
                                 { interactionExtraInfo | mbMatchedRuleId = maybeMatchedRuleId }
 
-                            -- this is a string returned by Engine.update and if different from "" indicates that info has to be requested from backend before we can go InteractStepThree
-                            thestrUrl =
-                                (Maybe.withDefault "" mbstrUrl) ++ Maybe.withDefault "" interactionExtraInfo.mbInputText ++ "/"
+                            getTheUrl strUrl =
+                                strUrl ++ Maybe.withDefault "" interactionExtraInfo.mbInputTextForBackend ++ "/"
 
                             interactionIncidents =
                                 if model.debugMode then
@@ -337,62 +345,73 @@ update msg model =
                                 else
                                     []
                         in
-                            case mbstrUrl of
-                                Nothing ->
-                                    update (InteractStepThree interactableId newInteractionExtraInfo.mbMatchedRuleId)
+                            case infoNeeded of
+                                NoInfoNeeded ->
+                                    update (InteractStepThree interactableId newInteractionExtraInfo)
                                         { newModel
                                             | bkendAnswerStatusDict = Dict.update interactableId (\x -> Just EngineTypes.NoInfoYet) model.bkendAnswerStatusDict
                                             , alertMessages = interactionIncidents
                                         }
 
-                                Just strUrl ->
-                                    let
-                                        -- clear the text box so the text can't be used by any other interactable.
-                                        newAnswerBoxModel =
-                                            AnswerBox.update "" model.answerBoxModel
+                                AnswerInfoToQuestionNeeded strUrl ->
+                                    if interactionExtraInfo.bkAnsStatus == NoInfoYet then
+                                        let
+                                            -- clear the text box so the text can't be used by any other interactable.
+                                            newAnswerBoxModel =
+                                                AnswerBox.update "" model.answerBoxModel
 
-                                        newInteractionExtraInfoTwo =
-                                            { newInteractionExtraInfo | bkAnsStatus = EngineTypes.WaitingForInfoRequested }
-                                    in
-                                        ( { newModel
-                                            | bkendAnswerStatusDict = Dict.update interactableId (\x -> Just EngineTypes.WaitingForInfoRequested) model.bkendAnswerStatusDict
-                                            , alertMessages = [ "___Checking_Answer___" ]
-                                            , answerBoxModel = newAnswerBoxModel
-                                          }
-                                        , getBackendAnswerInfo interactableId newInteractionExtraInfoTwo thestrUrl
-                                        )
-                    else
-                        -- Interactable is awaiting for some backend confirmation. No interaction possible at this time
-                        ( { model | alertMessages = "Please Wait ... \n" :: model.alertMessages }, Cmd.none )
+                                            newInteractionExtraInfoTwo =
+                                                { newInteractionExtraInfo | bkAnsStatus = EngineTypes.WaitingForInfoRequested }
+                                        in
+                                            ( { newModel
+                                                | bkendAnswerStatusDict = Dict.update interactableId (\x -> Just EngineTypes.WaitingForInfoRequested) model.bkendAnswerStatusDict
+                                                , alertMessages = [ "___Checking_Answer___" ]
+                                                , answerBoxModel = newAnswerBoxModel
+                                              }
+                                            , getBackendAnswerInfo interactableId newInteractionExtraInfoTwo (getTheUrl strUrl)
+                                            )
+                                    else
+                                        ( model, Cmd.none )
 
                 AnswerChecked interactableId interactionExtraInfo (Ok bresp) ->
                     let
-                        newModel =
+                        nModel =
                             { model
                                 | bkendAnswerStatusDict = Dict.update interactableId (\val -> Just (EngineTypes.Ans bresp)) model.bkendAnswerStatusDict
                                 , alertMessages = []
                             }
 
-                        newInteractionExtraInfo =
+                        nInteractionExtraInfo =
                             { interactionExtraInfo | bkAnsStatus = Ans bresp }
+
+                        ( newInteractionExtraInfo2, newModel2 ) =
+                            getNewModelAndInteractionExtraInfoByEngineUpdate interactableId nInteractionExtraInfo nModel
                     in
-                        update (InteractStepTwo interactableId newInteractionExtraInfo) newModel
+                        --update (InteractStepTwo interactableId newInteractionExtraInfo) newModel
+                        update (InteractStepThree interactableId newInteractionExtraInfo2) newModel2
 
                 AnswerChecked interactableId interactionExtraInfo (Err error) ->
                     let
-                        newModel =
+                        nModel =
                             { model
                                 | bkendAnswerStatusDict = Dict.update interactableId (\val -> Just CommunicationFailure) model.bkendAnswerStatusDict
                                 , alertMessages = [ "___Couldnt_check_Answer___" ]
                             }
 
-                        newInteractionExtraInfo =
+                        nInteractionExtraInfo =
                             { interactionExtraInfo | bkAnsStatus = CommunicationFailure }
-                    in
-                        update (InteractStepTwo interactableId newInteractionExtraInfo) newModel
 
-                InteractStepThree interactableId maybeMatchedRuleId ->
+                        ( newInteractionExtraInfo2, newModel2 ) =
+                            getNewModelAndInteractionExtraInfoByEngineUpdate interactableId nInteractionExtraInfo nModel
+                    in
+                        --update (InteractStepTwo interactableId newInteractionExtraInfo) newModel
+                        update (InteractStepThree interactableId newInteractionExtraInfo2) newModel2
+
+                InteractStepThree interactableId interactionExtraInfo ->
                     let
+                        maybeMatchedRuleId =
+                            interactionExtraInfo.mbMatchedRuleId
+
                         displayLanguage =
                             model.settingsModel.displayLanguage
 
@@ -550,7 +569,12 @@ update msg model =
                                                         Dict.get lgId nfti.interactableNames
                                                             |> Maybe.withDefault (Maybe.withDefault "noName" (Dict.get "en" nfti.interactableNames))
                                                   , interactableId = interactableId
-                                                  , isWritable = Engine.isWritable interactableId model.engineModel
+                                                  , isWritable =
+                                                        (Engine.isWritable interactableId model.engineModel
+                                                            && (interactionExtraInfo.currentLocation
+                                                                    == Engine.getCurrentLocation model.engineModel
+                                                               )
+                                                        )
                                                   , interactableCssSelector = nfti.interactableCssSelector
                                                   , narrative =
                                                         (Dict.get lgId nfti.narratives)
@@ -573,7 +597,15 @@ update msg model =
                         newAnswerBoxModel =
                             AnswerBox.update "" model.answerBoxModel
 
-                        getAlertMessage =
+                        getAlertMessage1 =
+                            case (Dict.get displayLanguage narrativesForThisInteraction.narratives) of
+                                Nothing ->
+                                    [ "No narrative content for this interaction in the current language. Maybe you want to try channging language !" ]
+
+                                _ ->
+                                    []
+
+                        getAlertMessage2 =
                             Engine.getInteractableAttribute "warningMessage" interactableId model.engineModel
                                 |> Tconverter.mbAttributeToDictStringString model.debugMode
                                 |> Dict.get displayLanguage
@@ -602,7 +634,7 @@ update msg model =
                     in
                         ( { model
                             | engineModel = newEngineModel --  |> checkEnd
-                            , alertMessages = getAlertMessage
+                            , alertMessages = (getAlertMessage1 ++ getAlertMessage2)
                             , answerBoxModel = newAnswerBoxModel
                             , languageStoryLines = newLanguageStoryLines
                             , languageNarrativeContents = updatedContent
@@ -737,7 +769,9 @@ convertToListIdExtraInfo lobjs =
             ( x.interactableId
             , EngineTypes.InteractionExtraInfo
                 (helperEmptyStringToNothing x.inputText)
+                (helperEmptyStringToNothing x.inputTextForBackend)
                 x.geolocationInfoText
+                x.currentLocation
                 EngineTypes.CommunicationFailure
                 (helperEmptyStringToNothing x.mbMatchedRuleId)
             )
@@ -764,14 +798,16 @@ saveHistoryToStorageHelper model =
                 (\x ->
                     { interactableId = Tuple.first x
                     , inputText = Tuple.second x |> .mbInputText |> Maybe.withDefault ""
+                    , inputTextForBackend = Tuple.second x |> .mbInputTextForBackend |> Maybe.withDefault ""
                     , geolocationInfoText = Tuple.second x |> .geolocationInfoText
+                    , currentLocation = Engine.getCurrentLocation model.engineModel
                     , mbMatchedRuleId = Tuple.second x |> .mbMatchedRuleId |> Maybe.withDefault ""
                     }
                 )
                 storyHistory
 
         infoToSave =
-            { playerName = model.playerName, lInteractions = lToSave }
+            { playerName = getInLanguage model.settingsModel.displayLanguage model.playerName, lInteractions = lToSave }
     in
         ( model, saveHistoryToStorage infoToSave )
 
@@ -779,12 +815,17 @@ saveHistoryToStorageHelper model =
 getExtraInfoFromModel : Model -> String -> InteractionExtraInfo
 getExtraInfoFromModel model interactableId =
     let
+        currLocationStrId =
+            Engine.getCurrentLocation model.engineModel
+
         currLocNameAndCoords =
-            Engine.getCurrentLocation model.engineModel |> findEntity model |> getDictLgNamesAndCoords Narrative.desiredLanguages
+            currLocationStrId |> findEntity model |> getDictLgNamesAndCoords Narrative.desiredLanguages
     in
         InteractionExtraInfo
             model.mbSentText
+            model.mbSentText
             (GpsUtils.getCurrentGeoReportAsText currLocNameAndCoords model.geoLocation model.geoDistances 3)
+            currLocationStrId
             (Dict.get interactableId model.bkendAnswerStatusDict |> Maybe.withDefault EngineTypes.NoInfoYet)
             Nothing
 
@@ -806,39 +847,90 @@ getNewCoords interactableId mbGpsZone bval interactionExtraInfo =
     Task.attempt (NewCoordsForInterId interactableId mbGpsZone bval interactionExtraInfo) Geolocation.now
 
 
+type alias LgTxt =
+    { lgId : String
+    , text : String
+    }
+
+
+textInLanguagesDecoder : Json.Decode.Decoder LgTxt
+textInLanguagesDecoder =
+    Json.Decode.map2 LgTxt
+        (Json.Decode.field "lgId" (Json.Decode.string))
+        (Json.Decode.field "text" (Json.Decode.string))
+
+
 backendAnswerDecoder : String -> String -> Json.Decode.Decoder EngineTypes.AnswerInfo
 backendAnswerDecoder interactableId playerAnswer =
-    Json.Decode.map8 EngineTypes.AnswerInfo
-        (Json.Decode.field "maxTriesReached" (Json.Decode.bool))
-        (Json.Decode.succeed interactableId)
-        (Json.Decode.field "questionBody" (Json.Decode.string))
-        (Json.Decode.succeed playerAnswer)
-        (Json.Decode.field "answered" (Json.Decode.bool))
-        (Json.Decode.field "correctAnswer" (Json.Decode.bool))
-        (Json.Decode.field "incorrectAnswer" (Json.Decode.bool))
-        (Json.Decode.field "additionalText" (Json.Decode.string))
+    Json.Decode.Pipeline.decode AnswerInfo
+        |> Json.Decode.Pipeline.required "maxTriesReached" (Json.Decode.bool)
+        |> Json.Decode.Pipeline.hardcoded interactableId
+        |> Json.Decode.Pipeline.required "questionBody" (Json.Decode.string)
+        |> Json.Decode.Pipeline.hardcoded playerAnswer
+        |> Json.Decode.Pipeline.required "answered" (Json.Decode.bool)
+        |> Json.Decode.Pipeline.required "correctAnswer" (Json.Decode.bool)
+        |> Json.Decode.Pipeline.required "incorrectAnswer" (Json.Decode.bool)
+        |> Json.Decode.Pipeline.required "lSecretTextDicts" (Json.Decode.list textInLanguagesDecoder)
+        |> Json.Decode.Pipeline.required "lSuccessTextDicts" (Json.Decode.list textInLanguagesDecoder)
+        |> Json.Decode.Pipeline.required "lInsuccessTextDicts" (Json.Decode.list textInLanguagesDecoder)
 
 
 getBackendAnswerInfo : String -> EngineTypes.InteractionExtraInfo -> String -> Cmd ClientTypes.Msg
 getBackendAnswerInfo interactableId interactionExtraInfo strUrl =
     let
+        apiKey =
+            InfoForBkendApiRequests.getApiKey
+
         request =
             Http.request
                 { method = "GET"
                 , headers =
-                    [ Http.header "x-api-key" "CfcnuERGFYh1KALSjTO4qh4lRFV762GIHTO73nuUTqg"
+                    [ Http.header "x-api-key" apiKey
                     ]
                 , url = strUrl
                 , body = Http.emptyBody
-                , expect = Http.expectJson (backendAnswerDecoder interactableId (Maybe.withDefault "" interactionExtraInfo.mbInputText))
+                , expect = Http.expectJson (backendAnswerDecoder interactableId (Maybe.withDefault "" interactionExtraInfo.mbInputTextForBackend))
                 , timeout = Nothing
                 , withCredentials = False
                 }
 
         newInteractionExtraInfo =
-            { interactionExtraInfo | mbInputText = Nothing }
+            { interactionExtraInfo | mbInputTextForBackend = Nothing }
     in
         Http.send (AnswerChecked interactableId newInteractionExtraInfo) request
+
+
+getNewModelAndInteractionExtraInfoByEngineUpdate : String -> EngineTypes.InteractionExtraInfo -> Model -> ( EngineTypes.InteractionExtraInfo, Model )
+getNewModelAndInteractionExtraInfoByEngineUpdate interactableId interactionExtraInfo model =
+    -- only allow interaction if this interactable isnt waiting for some backend answer confirmation
+    if (Dict.get interactableId model.bkendAnswerStatusDict == Just EngineTypes.WaitingForInfoRequested) then
+        -- Interactable is awaiting for some backend confirmation. No interaction possible at this time
+        ( interactionExtraInfo, { model | alertMessages = "Please Wait ... \n" :: model.alertMessages } )
+    else
+        let
+            ( newEngineModel, maybeMatchedRuleId, lInteractionIncidents, mbUrlForBkendQry ) =
+                Engine.update
+                    interactableId
+                    interactionExtraInfo
+                    model.engineModel
+
+            newInteractionExtraInfo =
+                { interactionExtraInfo | mbMatchedRuleId = maybeMatchedRuleId }
+
+            interactionIncidents =
+                if model.debugMode then
+                    lInteractionIncidents
+                else
+                    []
+
+            newModel =
+                { model
+                    | engineModel = newEngineModel
+                    , bkendAnswerStatusDict = Dict.update interactableId (\x -> Just EngineTypes.NoInfoYet) model.bkendAnswerStatusDict
+                    , alertMessages = interactionIncidents
+                }
+        in
+            ( newInteractionExtraInfo, newModel )
 
 
 
@@ -851,7 +943,7 @@ view model =
         viewStartScreen model.baseImgUrl model
     else if model.displayEndScreen then
         --h1 [] [ text "Congratulations ! You reached the End . You are a master of your neighbourhood :) " ]
-        Theme.EndScreen.view model.baseImgUrl
+        Theme.EndScreen.view model.baseImgUrl model.endScreenInfo
     else
         viewMainGame model
 
@@ -899,7 +991,6 @@ viewMainGame model =
                     |> Maybe.map (Tconverter.mbAttributeToDictStringListStringString model.debugMode)
                     |> Maybe.withDefault Dict.empty
             , layoutWithSidebar = model.settingsModel.layoutWithSidebar
-            , boolTextBoxInSidebar = False -- Its probably better to not allow this. Its better to always have a textbox associated with an interactable
             , boolTextBoxInStoryline =
                 case mbInteactableIdAtTop of
                     Nothing ->
@@ -909,6 +1000,14 @@ viewMainGame model =
                         Engine.isWritable interactableId model.engineModel
                             && Dict.get interactableId model.bkendAnswerStatusDict
                             /= Just EngineTypes.WaitingForInfoRequested
+            , mbTextBoxPlaceholderText =
+                case mbInteactableIdAtTop of
+                    Nothing ->
+                        Nothing
+
+                    Just interactableId ->
+                        Engine.getInteractableAttribute "placeholderText" interactableId model.engineModel
+                            |> Tconverter.mbAttributeToMbString model.debugMode
             , settingsModel = model.settingsModel
             , alertMessages = model.alertMessages
             , ending =
@@ -925,7 +1024,7 @@ viewMainGame model =
 
 viewStartScreen : String -> Model -> Html ClientTypes.Msg
 viewStartScreen baseImgUrl model =
-    Theme.StartScreen.view baseImgUrl model.answerBoxModel
+    Theme.StartScreen.view baseImgUrl model.startScreenInfo model.answerBoxModel
 
 
 port loaded : (Bool -> msg) -> Sub msg

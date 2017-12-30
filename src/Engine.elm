@@ -3,6 +3,7 @@ module Engine
         ( Model
         , init
         , update
+        , completeTheUpdate
         , changeWorld
         , chooseFrom
         , getCurrentScene
@@ -78,8 +79,10 @@ module Engine
         , noChosenOptionYet
         , choiceHasAlreadyBeenMade
         , ChangeWorldCommand
-        , QuasiChangeWorldCommand
-        , QuasiChangeWorldCommandWithBackendInfo
+          --, QuasiChangeWorldCommand
+          --, QuasiChangeWorldCommandWithBackendInfo
+        , EngUpdateMsg(..)
+        , EngUpdateResponse(..)
         , addLocation
         , endStory
         , loadScene
@@ -376,17 +379,46 @@ getStoryRules (Model story) =
     story.rules
 
 
-{-| This is how you progress the story. Call it with the id of what ever was just "interacted" with. This will apply the best matching rule for the current context, or if it does not find a matching rule, it will perform some sensible default changes such as adding an item to inventory or moving to a location if no rules match. It also adds the interaction to the history (which is used for `hasPreviouslyInteractedWith`, save/load, and undo).
+type EngUpdateMsg
+    = PreUpdate String Types.InteractionExtraInfo
+    | CompleteTheUpdate String Types.ExtraInfoWithPendingChanges
 
-This will also return the id of the matching rule (if there was one). Normally the client would look up some associated narrative by this id to display, though it could respond in any other way as well.
+
+type EngUpdateResponse
+    = EnginePreResponse ( Model, Types.ExtraInfoWithPendingChanges, Types.MoreInfoNeeded )
+    | EngineUpdateCompleteResponse ( Model, List String )
+
+
+{-| This is how you progress the story. Call it with an EngUpdateMsg that includes the id of what ever was just "interacted" with.
+and some extra info that might be used in the interaction
+This will apply the best matching rule for the current context, or if it does not find a matching rule, it will perform some sensible default changes such as adding an item to inventory or moving to a location if no rules match. It also adds the interaction to the history (which is used for `hasPreviouslyInteractedWith`, save/load, and undo).
+-}
+update : EngUpdateMsg -> Model -> EngUpdateResponse
+update msg ((Model story) as model) =
+    case msg of
+        PreUpdate interactableId extraInfo ->
+            preUpdate interactableId extraInfo model
+
+        CompleteTheUpdate interactableId extraInfoWithPendingChanges ->
+            completeTheUpdate interactableId extraInfoWithPendingChanges model
+
+
+
+{-
+
+    This will also return the id of the matching rule (if there was one)
+    included in the EnginePreResponse  Types.ExtraInfoWithPendingChanges
+   Normally the client would look up some associated narrative by this id to display, though it could respond in any other way as well.
 
 -}
-update :
+
+
+preUpdate :
     String
     -> Types.InteractionExtraInfo
     -> Model
-    -> ( Model, Maybe String, List String, Types.MoreInfoNeeded )
-update interactableId extraInfo ((Model story) as model) =
+    -> EngUpdateResponse
+preUpdate interactableId extraInfo ((Model story) as model) =
     let
         defaultChanges : List ChangeWorldCommand
         defaultChanges =
@@ -408,6 +440,10 @@ update interactableId extraInfo ((Model story) as model) =
                     -- we already know what rule matched and we dont want to search it again because it is also possible that in the meantime  the player interacted with something else and altered the conditions
                     Maybe.map (\x -> ( matchedRuleId, x )) (Dict.get matchedRuleId story.rules)
 
+        newExtraInfo : Types.InteractionExtraInfo
+        newExtraInfo =
+            { extraInfo | mbMatchedRuleId = Maybe.map Tuple.first matchingRule }
+
         somechanges : List ChangeWorldCommand
         somechanges =
             matchingRule
@@ -420,24 +456,20 @@ update interactableId extraInfo ((Model story) as model) =
                 |> Maybe.map (Tuple.second >> .quasiChanges)
                 |> Maybe.withDefault []
 
-        mbBkQuasicwcmd : Maybe QuasiChangeWorldCommandWithBackendInfo
-        mbBkQuasicwcmd =
+        mbQuasiCwCmdWithBk : Maybe QuasiChangeWorldCommandWithBackendInfo
+        mbQuasiCwCmdWithBk =
             matchingRule
                 |> Maybe.map (Tuple.second >> .quasiChangeWithBkend)
 
         infoNeeded : MoreInfoNeeded
         infoNeeded =
             -- if there are Check_IfAnswerCorrectUsingBackend get the InfoNeeded strUrl to request answer info from backend
-            case mbBkQuasicwcmd of
+            case mbQuasiCwCmdWithBk of
                 Nothing ->
                     NoInfoNeeded
 
                 Just quasicwcmd ->
-                    getInfoNeeded quasicwcmd
-
-        mbChangeFromQuasi : Maybe ChangeWorldCommand
-        mbChangeFromQuasi =
-            Maybe.map (replaceBkendQuasiCwCmdsWithCwcommands extraInfo) mbBkQuasicwcmd
+                    determineIfInfoNeeded quasicwcmd
 
         changesFromQuasi : List ChangeWorldCommand
         changesFromQuasi =
@@ -446,35 +478,66 @@ update interactableId extraInfo ((Model story) as model) =
 
         changes : List ChangeWorldCommand
         changes =
+            somechanges ++ changesFromQuasi
+
+        extraInfoWithPendingChanges : Types.ExtraInfoWithPendingChanges
+        extraInfoWithPendingChanges =
+            ExtraInfoWithPendingChanges newExtraInfo changes mbQuasiCwCmdWithBk
+
+        -- this isn't necessary , the above allready covers all cases , but just to make it a bit more clear ...
+        extraInfoWithPendingChangesNoBackend : Types.ExtraInfoWithPendingChanges
+        extraInfoWithPendingChangesNoBackend =
+            ExtraInfoWithPendingChanges newExtraInfo changes Nothing
+    in
+        if (infoNeeded /= NoInfoNeeded && extraInfo.bkAnsStatus == NoInfoYet && extraInfo.mbInputTextForBackend /= Nothing && (extraInfo.mbInputTextForBackend /= Just "")) then
+            EnginePreResponse ( model, extraInfoWithPendingChanges, infoNeeded )
+        else if (infoNeeded /= NoInfoNeeded && extraInfo.bkAnsStatus == WaitingForInfoRequested) then
+            EnginePreResponse ( model, (ExtraInfoWithPendingChanges extraInfo [] Nothing), NoInfoNeeded )
+        else
+            EnginePreResponse ( model, extraInfoWithPendingChangesNoBackend, NoInfoNeeded )
+
+
+completeTheUpdate :
+    String
+    -> Types.ExtraInfoWithPendingChanges
+    -> Model
+    -> EngUpdateResponse
+completeTheUpdate interactableId extraInfoWithPendingChanges ((Model story) as model) =
+    let
+        extraInfo =
+            extraInfoWithPendingChanges.interactionExtraInfo
+
+        mbChangeFromQuasi : Maybe ChangeWorldCommand
+        mbChangeFromQuasi =
+            Maybe.map (replaceBkendQuasiCwCmdsWithCwcommands extraInfo) extraInfoWithPendingChanges.mbQuasiCwCmdWithBk
+
+        allChanges =
             case mbChangeFromQuasi of
                 Nothing ->
-                    somechanges ++ changesFromQuasi
+                    extraInfoWithPendingChanges.pendingChanges
 
                 Just chg ->
-                    chg :: (somechanges ++ changesFromQuasi)
+                    chg :: extraInfoWithPendingChanges.pendingChanges
 
         addHistory : Model -> Model
         addHistory (Model story) =
             Model <| { story | history = story.history ++ [ ( interactableId, extraInfo ) ] }
+
+        ( newModel, lincidents ) =
+            changeWorld allChanges model
     in
-        if (infoNeeded /= NoInfoNeeded && extraInfo.bkAnsStatus == NoInfoYet && extraInfo.mbInputTextForBackend /= Nothing && (extraInfo.mbInputTextForBackend /= Just "")) then
-            ( model, Maybe.map Tuple.first matchingRule, [], infoNeeded )
-        else if (infoNeeded /= NoInfoNeeded && extraInfo.bkAnsStatus == WaitingForInfoRequested) then
-            ( model, Maybe.map Tuple.first matchingRule, [], NoInfoNeeded )
-        else
-            let
-                ( newModel, lincidents ) =
-                    changeWorld changes model
-            in
-                ( newModel |> addHistory
-                , Maybe.map Tuple.first matchingRule
-                , lincidents
-                , NoInfoNeeded
-                )
+        EngineUpdateCompleteResponse
+            ( newModel |> addHistory
+            , lincidents
+            )
 
 
-getInfoNeeded : QuasiChangeWorldCommandWithBackendInfo -> MoreInfoNeeded
-getInfoNeeded qcwcommand =
+
+--
+
+
+determineIfInfoNeeded : QuasiChangeWorldCommandWithBackendInfo -> MoreInfoNeeded
+determineIfInfoNeeded qcwcommand =
     case qcwcommand of
         Check_IfAnswerCorrectUsingBackend strUrl cAnsdata id ->
             AnswerInfoToQuestionNeeded strUrl

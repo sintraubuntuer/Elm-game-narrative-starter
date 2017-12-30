@@ -13,7 +13,7 @@ type Msg
     | Interact String
     | InteractStepTwo String EngineTypes.InteractionExtraInfo
     | InteractStepThree String EngineTypes.InteractionExtraInfo
-    | AnswerChecked String EngineTypes.InteractionExtraInfo (Result Http.Error EngineTypes.AnswerInfo)
+    | AnswerChecked String EngineTypes.ExtraInfoWithPendingChanges (Result Http.Error EngineTypes.AnswerInfo)
     | NewUserSubmitedText String
     | ChangeOptionDisplayLanguage String
     | ChangeOptionDontCheckGps Bool
@@ -51,6 +51,7 @@ type ToSettingsMsg
     | SettingsToggleShowHideSaveLoadBtns
     | SettingsLayoutWithSidebar Bool
     | SettingsShowExitToFinalScreenButton
+    | SettingsHideExitToFinalScreenButton
 
 
 type alias SettingsModel =

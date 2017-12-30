@@ -63,7 +63,10 @@ update msg model =
             { model | layoutWithSidebar = bWithSidebar }
 
         SettingsShowExitToFinalScreenButton ->
-            { model | showExitToFinalScreenButton = not model.showExitToFinalScreenButton }
+            { model | showExitToFinalScreenButton = True }
+
+        SettingsHideExitToFinalScreenButton ->
+            { model | showExitToFinalScreenButton = False }
 
 
 

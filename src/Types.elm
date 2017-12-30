@@ -159,6 +159,13 @@ type alias InteractionExtraInfo =
     }
 
 
+type alias ExtraInfoWithPendingChanges =
+    { interactionExtraInfo : InteractionExtraInfo
+    , pendingChanges : List ChangeWorldCommand
+    , mbQuasiCwCmdWithBk : Maybe QuasiChangeWorldCommandWithBackendInfo
+    }
+
+
 type alias Rules =
     Dict ID Rule
 

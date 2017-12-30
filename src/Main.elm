@@ -2,9 +2,9 @@ port module Main exposing (..)
 
 import Engine exposing (..)
 import Types as EngineTypes exposing (BackendAnswerStatus(..), AnswerInfo, InteractionExtraInfo, MoreInfoNeeded(..))
-import OurStory2.Manifest as Manifest
-import OurStory2.Rules as Rules
-import OurStory2.Narrative as Narrative
+import OurStory.Manifest as Manifest
+import OurStory.Rules as Rules
+import OurStory.Narrative as Narrative
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Tuple
@@ -14,6 +14,7 @@ import Theme.Settings as Settings
 import Theme.StartScreen
 import Theme.EndScreen
 import ClientTypes exposing (..)
+import TypesUpdateHelper exposing (updateNestedMbInputTextBk, updateNestedBkAnsStatus)
 
 
 --import Audio
@@ -21,6 +22,7 @@ import ClientTypes exposing (..)
 import Components exposing (..)
 import Dict exposing (Dict)
 import List.Zipper as Zipper exposing (Zipper)
+import Json.Encode
 import Json.Decode
 import Json.Decode.Pipeline
 import Geolocation
@@ -324,34 +326,50 @@ update msg model =
                         ( { model | alertMessages = "Please Wait ... \n" :: model.alertMessages }, Cmd.none )
                     else
                         let
-                            ( newEngineModel, maybeMatchedRuleId, lInteractionIncidents, infoNeeded ) =
+                            engResp1 =
                                 Engine.update
-                                    interactableId
-                                    interactionExtraInfo
+                                    (PreUpdate interactableId interactionExtraInfo)
                                     model.engineModel
+
+                            ( newEngineModel, extraInfoWithPendingChanges, infoNeeded ) =
+                                case engResp1 of
+                                    EnginePreResponse ( newEngineModel_, extraInfoWithPendingChanges_, infoNeeded_ ) ->
+                                        ( newEngineModel_, extraInfoWithPendingChanges_, infoNeeded_ )
+
+                                    _ ->
+                                        -- pattern matching needs to deal with all cases but this can't really happen
+                                        ( model.engineModel, EngineTypes.ExtraInfoWithPendingChanges interactionExtraInfo [] Nothing, NoInfoNeeded )
+
+                            newInteractionExtraInfo =
+                                extraInfoWithPendingChanges.interactionExtraInfo
 
                             newModel =
                                 { model | engineModel = newEngineModel }
-
-                            newInteractionExtraInfo =
-                                { interactionExtraInfo | mbMatchedRuleId = maybeMatchedRuleId }
-
-                            getTheUrl strUrl =
-                                strUrl ++ Maybe.withDefault "" interactionExtraInfo.mbInputTextForBackend ++ "/"
-
-                            interactionIncidents =
-                                if model.debugMode then
-                                    lInteractionIncidents
-                                else
-                                    []
                         in
                             case infoNeeded of
                                 NoInfoNeeded ->
-                                    update (InteractStepThree interactableId newInteractionExtraInfo)
-                                        { newModel
-                                            | bkendAnswerStatusDict = Dict.update interactableId (\x -> Just EngineTypes.NoInfoYet) model.bkendAnswerStatusDict
-                                            , alertMessages = interactionIncidents
-                                        }
+                                    let
+                                        ( newEngineModel2, lInteractionIncidents ) =
+                                            case Engine.update (CompleteTheUpdate interactableId extraInfoWithPendingChanges) newEngineModel of
+                                                EngineUpdateCompleteResponse ( newEngineModel2_, lInteractionIncidents_ ) ->
+                                                    ( newEngineModel2_, lInteractionIncidents_ )
+
+                                                _ ->
+                                                    -- pattern matching needs to deal with all cases but this can't really happen
+                                                    ( newEngineModel, [] )
+
+                                        interactionIncidents =
+                                            if model.debugMode then
+                                                lInteractionIncidents
+                                            else
+                                                []
+                                    in
+                                        update (InteractStepThree interactableId newInteractionExtraInfo)
+                                            { newModel
+                                                | engineModel = newEngineModel2
+                                                , bkendAnswerStatusDict = Dict.update interactableId (\x -> Just EngineTypes.NoInfoYet) model.bkendAnswerStatusDict
+                                                , alertMessages = interactionIncidents
+                                            }
 
                                 AnswerInfoToQuestionNeeded strUrl ->
                                     if interactionExtraInfo.bkAnsStatus == NoInfoYet then
@@ -362,18 +380,30 @@ update msg model =
 
                                             newInteractionExtraInfoTwo =
                                                 { newInteractionExtraInfo | bkAnsStatus = EngineTypes.WaitingForInfoRequested }
+
+                                            newExtraInfoWithPendingChanges : EngineTypes.ExtraInfoWithPendingChanges
+                                            newExtraInfoWithPendingChanges =
+                                                { interactionExtraInfo = newInteractionExtraInfoTwo
+                                                , pendingChanges = extraInfoWithPendingChanges.pendingChanges
+                                                , mbQuasiCwCmdWithBk = extraInfoWithPendingChanges.mbQuasiCwCmdWithBk
+                                                }
+
+                                            getTheUrl strUrl =
+                                                strUrl
+
+                                            -- ++ Maybe.withDefault "" interactionExtraInfo.mbInputTextForBackend ++ "/"
                                         in
                                             ( { newModel
                                                 | bkendAnswerStatusDict = Dict.update interactableId (\x -> Just EngineTypes.WaitingForInfoRequested) model.bkendAnswerStatusDict
                                                 , alertMessages = [ "___Checking_Answer___" ]
                                                 , answerBoxModel = newAnswerBoxModel
                                               }
-                                            , getBackendAnswerInfo interactableId newInteractionExtraInfoTwo (getTheUrl strUrl)
+                                            , getBackendAnswerInfo interactableId newExtraInfoWithPendingChanges (getTheUrl strUrl)
                                             )
                                     else
                                         ( model, Cmd.none )
 
-                AnswerChecked interactableId interactionExtraInfo (Ok bresp) ->
+                AnswerChecked interactableId extraInfoWithPendingChanges (Ok bresp) ->
                     let
                         nModel =
                             { model
@@ -381,16 +411,16 @@ update msg model =
                                 , alertMessages = []
                             }
 
-                        nInteractionExtraInfo =
-                            { interactionExtraInfo | bkAnsStatus = Ans bresp }
+                        newExtraInfoWithPendingChanges =
+                            updateNestedBkAnsStatus extraInfoWithPendingChanges (Ans bresp)
 
-                        ( newInteractionExtraInfo2, newModel2 ) =
-                            getNewModelAndInteractionExtraInfoByEngineUpdate interactableId nInteractionExtraInfo nModel
+                        ( newInteractionExtraInfo_, newModel ) =
+                            getNewModelAndInteractionExtraInfoByEngineUpdate interactableId newExtraInfoWithPendingChanges nModel
                     in
                         --update (InteractStepTwo interactableId newInteractionExtraInfo) newModel
-                        update (InteractStepThree interactableId newInteractionExtraInfo2) newModel2
+                        update (InteractStepThree interactableId newInteractionExtraInfo_) newModel
 
-                AnswerChecked interactableId interactionExtraInfo (Err error) ->
+                AnswerChecked interactableId extraInfoWithPendingChanges (Err error) ->
                     let
                         nModel =
                             { model
@@ -398,14 +428,14 @@ update msg model =
                                 , alertMessages = [ "___Couldnt_check_Answer___" ]
                             }
 
-                        nInteractionExtraInfo =
-                            { interactionExtraInfo | bkAnsStatus = CommunicationFailure }
+                        newExtraInfoWithPendingChanges =
+                            updateNestedBkAnsStatus extraInfoWithPendingChanges CommunicationFailure
 
-                        ( newInteractionExtraInfo2, newModel2 ) =
-                            getNewModelAndInteractionExtraInfoByEngineUpdate interactableId nInteractionExtraInfo nModel
+                        ( newInteractionExtraInfo_, newModel ) =
+                            getNewModelAndInteractionExtraInfoByEngineUpdate interactableId newExtraInfoWithPendingChanges nModel
                     in
                         --update (InteractStepTwo interactableId newInteractionExtraInfo) newModel
-                        update (InteractStepThree interactableId newInteractionExtraInfo2) newModel2
+                        update (InteractStepThree interactableId newInteractionExtraInfo_) newModel
 
                 InteractStepThree interactableId interactionExtraInfo ->
                     let
@@ -710,7 +740,7 @@ update msg model =
                             convertToListIdExtraInfo obj.lInteractions
 
                         savedSettings =
-                            model.settingsModel
+                            Settings.update (ClientTypes.SettingsHideExitToFinalScreenButton) model.settingsModel
 
                         ( newModel, cmds ) =
                             init (Flags model.baseImgUrl model.baseSoundUrl)
@@ -875,47 +905,67 @@ backendAnswerDecoder interactableId playerAnswer =
         |> Json.Decode.Pipeline.required "lInsuccessTextDicts" (Json.Decode.list textInLanguagesDecoder)
 
 
-getBackendAnswerInfo : String -> EngineTypes.InteractionExtraInfo -> String -> Cmd ClientTypes.Msg
-getBackendAnswerInfo interactableId interactionExtraInfo strUrl =
+playerAnswerEncoder : String -> String -> Json.Encode.Value
+playerAnswerEncoder interactableId playerAnswer =
+    let
+        attributes =
+            [ ( "interactableId", Json.Encode.string interactableId )
+            , ( "playerAnswer", Json.Encode.string playerAnswer )
+            ]
+    in
+        Json.Encode.object attributes
+
+
+getBackendAnswerInfo : String -> EngineTypes.ExtraInfoWithPendingChanges -> String -> Cmd ClientTypes.Msg
+getBackendAnswerInfo interactableId extraInfoWithPendingChanges strUrl =
     let
         apiKey =
             InfoForBkendApiRequests.getApiKey
 
         request =
             Http.request
-                { method = "GET"
+                { method = "POST"
                 , headers =
                     [ Http.header "x-api-key" apiKey
                     ]
                 , url = strUrl
-                , body = Http.emptyBody
-                , expect = Http.expectJson (backendAnswerDecoder interactableId (Maybe.withDefault "" interactionExtraInfo.mbInputTextForBackend))
+                , body =
+                    extraInfoWithPendingChanges.interactionExtraInfo.mbInputTextForBackend
+                        |> Maybe.withDefault ""
+                        |> playerAnswerEncoder interactableId
+                        |> Http.jsonBody
+
+                --Http.emptyBody
+                , expect = Http.expectJson (backendAnswerDecoder interactableId (Maybe.withDefault "" extraInfoWithPendingChanges.interactionExtraInfo.mbInputTextForBackend))
                 , timeout = Nothing
                 , withCredentials = False
                 }
 
-        newInteractionExtraInfo =
-            { interactionExtraInfo | mbInputTextForBackend = Nothing }
+        newExtraInfoWithPendingChanges =
+            updateNestedMbInputTextBk extraInfoWithPendingChanges Nothing
     in
-        Http.send (AnswerChecked interactableId newInteractionExtraInfo) request
+        Http.send (AnswerChecked interactableId newExtraInfoWithPendingChanges) request
 
 
-getNewModelAndInteractionExtraInfoByEngineUpdate : String -> EngineTypes.InteractionExtraInfo -> Model -> ( EngineTypes.InteractionExtraInfo, Model )
-getNewModelAndInteractionExtraInfoByEngineUpdate interactableId interactionExtraInfo model =
+getNewModelAndInteractionExtraInfoByEngineUpdate : String -> EngineTypes.ExtraInfoWithPendingChanges -> Model -> ( EngineTypes.InteractionExtraInfo, Model )
+getNewModelAndInteractionExtraInfoByEngineUpdate interactableId extraInfoWithPendingChanges model =
     -- only allow interaction if this interactable isnt waiting for some backend answer confirmation
     if (Dict.get interactableId model.bkendAnswerStatusDict == Just EngineTypes.WaitingForInfoRequested) then
         -- Interactable is awaiting for some backend confirmation. No interaction possible at this time
-        ( interactionExtraInfo, { model | alertMessages = "Please Wait ... \n" :: model.alertMessages } )
+        ( extraInfoWithPendingChanges.interactionExtraInfo, { model | alertMessages = "Please Wait ... \n" :: model.alertMessages } )
     else
         let
-            ( newEngineModel, maybeMatchedRuleId, lInteractionIncidents, mbUrlForBkendQry ) =
-                Engine.update
-                    interactableId
-                    interactionExtraInfo
-                    model.engineModel
+            ( newEngineModel, lInteractionIncidents ) =
+                case Engine.update (CompleteTheUpdate interactableId extraInfoWithPendingChanges) model.engineModel of
+                    EngineUpdateCompleteResponse ( newEngineModel_, lInteractionIncidents_ ) ->
+                        ( newEngineModel_, lInteractionIncidents_ )
+
+                    _ ->
+                        -- pattern matching needs to deal with all cases but this can't really happen
+                        ( model.engineModel, [] )
 
             newInteractionExtraInfo =
-                { interactionExtraInfo | mbMatchedRuleId = maybeMatchedRuleId }
+                extraInfoWithPendingChanges.interactionExtraInfo
 
             interactionIncidents =
                 if model.debugMode then

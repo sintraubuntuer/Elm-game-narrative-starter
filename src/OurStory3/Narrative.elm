@@ -118,7 +118,7 @@ interactingWithPlayerOneDict =
 interactingWithPlayerOne : List String
 interactingWithPlayerOne =
     [ """
-determinado residente em investigação das redondezas ...
+. . .
       """
     ]
 
@@ -126,7 +126,7 @@ determinado residente em investigação das redondezas ...
 interactingWithPlayerOneEn : List String
 interactingWithPlayerOneEn =
     [ """
-local researching his neighbourhood
+. . .
       """
     ]
 
@@ -247,8 +247,6 @@ theQuestionsDict =
           , { questionBody = "Near the entrance of Vila Sassetti is also the entrance to another Park . What's that Park ? "
             , questionName = "question 1"
             , additionalTextIfCorrectAnswer = """Well Done ! The entrance to Parque das Merendas is located right next to the entrance to Vila Sassetti !
-
-![pic500](img/parqueDasMerendas.png)
               """
             , additionalTextIfIncorrectAnswer = ""
             , availableChoices = []
